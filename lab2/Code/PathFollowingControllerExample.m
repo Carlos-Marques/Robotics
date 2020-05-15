@@ -19,12 +19,32 @@
 %% Define waypoints
 % Define a set of waypoints for the desired path for the robot
 
-path = [2.00    1.00;
-    1.25    1.75;
-    5.25    8.25;
-    7.25    8.75;
-    11.75   10.75;
-    12.00   10.00];
+% path = [2.00    1.00;
+%     1.25    1.75;
+%     5.25    8.25;
+%     7.25    8.75;
+%     11.75   10.75;
+%     12.00   10.00];
+
+% Reference trajectory specification
+figure(1)
+clf
+lims = [0,13,0,13];
+axis(lims)
+hold on
+%%% starting of the trajectory generation reference stuff
+disp('use the mouse to input via points for the reference trajectory - right button for the last point');
+button = 1;
+k = 1;
+path = [];
+while button==1,
+    [x(k),y(k),button] = ginput(1);
+    path = [path; x(k),y(k)];
+    plot(x(k),y(k),'r+')
+    k = k + 1;
+end
+disp([ num2str(k-1), ' points to interpolate from '])
+close(figure(1));
 
 % Set the current location and the goal location of the robot as defined by the path
 robotCurrentLocation = path(1,:);
@@ -84,7 +104,7 @@ controller.Waypoints = path;
 %%
 % Set the path following controller parameters. The desired linear
 % velocity is set to 0.3 meters/second for this example.
-controller.DesiredLinearVelocity = 0.3;
+controller.DesiredLinearVelocity = 0.5;
 
 %%
 % The maximum angular velocity acts as a saturation limit for rotational velocity, which is
@@ -149,114 +169,4 @@ end
 % The simulated robot has reached the goal location using the path following
 % controller along the desired path. Close simulation.
 delete(robot)
-
-%% Using the path following controller along with PRM
-% If the desired set of waypoints are computed by a path planner, the path
-% following controller can be used in the same fashion.
-
-% Start Robot Simulator with a simple map
-robot = ExampleHelperRobotSimulator('simpleMap',2);
-robot.enableLaser(false);
-robot.setRobotSize(robotRadius);
-robot.showTrajectory(true);
-
-%%
-% You can compute the |path| using the PRM path planning algorithm. See
-% <docid:robotics_examples.example-PathPlanningExample> for details.
-
-mapInflated = copy(robot.Map);
-inflate(mapInflated,robotRadius);
-prm = robotics.PRM(mapInflated);
-prm.NumNodes = 100;
-prm.ConnectionDistance = 10;
-
-%%
-% Find a path between the start and end location. Note that the |path| will
-% be different due to the probabilistic nature of the PRM algorithm.
-startLocation = [2.0 1.0];
-endLocation = [12.0 10.0];
-path = findpath(prm, startLocation, endLocation)
-
-%%
-% Display the path
-show(prm, 'Map', 'off', 'Roadmap', 'off');
-
-%%
-% <<path_robot_simulator_part2.png>>
-%
-
-%%
-% You defined a path following controller above which you can re-use
-% for computing the control commands of a robot on this map. To
-% re-use the controller and redefine the waypoints while keeping the other
-% information the same, use the |<docid:robotics_ref.buopqdc-1 release>| function.
-release(controller);
-controller.Waypoints = path;
-
-%%
-% Set current location and the goal of the robot as defined by the path
-robotCurrentLocation = path(1,:);
-robotGoal = path(end,:);
-
-%%
-% Assume an initial robot orientation
-initialOrientation = 0;
-
-%%
-% Define the current pose for robot motion [x y theta]
-robotCurrentPose = [robotCurrentLocation initialOrientation];
-
-%%
-% Reset the current position of the simulated robot to the start of the path.
-robot.setRobotPose(robotCurrentPose);
-
-%%
-% <<path_starting_position_part2.png>>
-%
-%%
-% Compute distance to the goal location
-distanceToGoal = norm(robotCurrentLocation - robotGoal);
-
-%%
-% Define a goal radius
-goalRadius = 0.1;
-
-%%
-% Drive the robot using the controller output on the given map until it
-% reaches the goal. The controller runs at 10 Hz.
-reset(controlRate);
-while( distanceToGoal > goalRadius )
-    
-    % Compute the controller outputs, i.e., the inputs to the robot
-    [v, omega] = controller(robot.getRobotPose);
-    
-    % Simulate the robot using the controller outputs
-    drive(robot, v, omega);
-    
-    % Extract current location information from the current pose
-    robotCurrentPose = robot.getRobotPose;
-    
-    % Re-compute the distance to the goal
-    distanceToGoal = norm(robotCurrentPose(1:2) - robotGoal);
-    
-    waitfor(controlRate);
-end
-
-%%
-% The simulated robot has reached the goal location using the path following
-% controller along the desired path. Stop the robot.
-drive(robot, 0, 0);
-
-%%
-% <<path_completed_path_part2.png>>
-%
-
-%%
-% Close Simulation.
-delete(robot);
-%% See Also
-%
-% * <docid:robotics_examples.example-PathPlanningExample Path Planning in Environments of Different Complexity>
-% * <docid:robotics_examples.example-MappingWithKnownPosesExample Mapping With Known Poses>
-
 displayEndOfDemoMessage(mfilename)

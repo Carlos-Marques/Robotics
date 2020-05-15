@@ -12,8 +12,6 @@ close all;
 
 %% Simulation parameters
 
-hi = 0.01;  %this controls the time interval of the ref traj
-
 % Car specs
 car_length = 3.332; %m
 car_width = 1.508; %m
@@ -32,35 +30,31 @@ car_polygon = [ -Lb, -car_width/2;
 % Reference trajectory specification
 figure(1)
 clf
-axis([-10,10,-10,10])
+lims = [-10,10,-10,10];
+hi = 0.01;
+axis(lims)
 hold on
 %%% starting of the trajectory generation reference stuff
 disp('use the mouse to input via points for the reference trajectory - right button for the last point');
 button = 1;
 k = 1;
+path = [];
 while button==1,
     [x(k),y(k),button] = ginput(1);
+    path = [path; x(k),y(k)];
     plot(x(k),y(k),'r+')
     k = k + 1;
 end
 drawnow;
 disp([ num2str(k-1), ' points to interpolate from '])
 
-% Trajectory information
-npt = length(x); %number of via points, including initial and final
-nvia = [0:1:npt-1];
-csinterp_x = csapi(nvia,x);
-csinterp_y = csapi(nvia,y);
-time = [0:hi:npt-1];
-xx = fnval(csinterp_x, time);
-yy = fnval(csinterp_y, time);
+% Get trajectory 
+[time, ref] = genTrajectory(lims,path,hi);
+xx = ref(:,1);
+yy = ref(:,2);
+the = ref(:,3);
 plot(xx,yy, 'r')
-
-% Compute angle of the tangent to the reference trajectory
-for k=1:length(xx)-1,
-    theta_tr(k) = atan2(yy(k+1)-yy(k), xx(k+1)-xx(k));
-end
-theta_tr(k+1) = theta_tr(k);
+npt_ref = length(ref(:,1));
 
 % Input the initial position and orientation for the car
 disp('input the position and orientation of the car - 2 points')
@@ -75,8 +69,6 @@ h = 0.01; % time step for each iteration (s)
 k = 1; % sampling instant
 initialPose = [car_x(1), car_y(1), car_t, 0]; % initial configuration for the car
 carPose(1,:) = initialPose;
-ref = [xx', yy', theta_tr'];   % reference trajectory 
-npt_ref = length(ref(:,1)); % number of points in the trajectory
 look_ahead_idx = 10;  % number of points ahead of the point in the reference traj
                         % that is closest to the car used to "look ahead"
                         
@@ -90,12 +82,16 @@ nsimul = 30000;  % max number of iterations of the simulation
 turn_back_flag = 0;
 
 % Controller parameters
-Kl = 5;
-Ks = 25;
-Kv = 2;
+Kl = 0.2;
+Ks = 0.5;
+Kv = 1;
 rate = 10; %Control rate at 10Hz
 
+t(1) = 0;
+
 while(distanceToGoal > goalRadius && k < nsimul && turn_back_flag ==0)
+    
+    t(k) = k*h;
     
     % Get the point of the reference trajectory that is closest to the car
     err = ref(:,1:2) - carPose(k,1:2);
@@ -130,14 +126,14 @@ while(distanceToGoal > goalRadius && k < nsimul && turn_back_flag ==0)
     % otherwise it's on the right side
     
     % Compute controller outputs, then feed them to the robot
-    % v(k) = 0.1; % alternative 1 - a bit slow
+    %v(k) = 0.1; % alternative 1 - a bit slow
     v(k) = 1 - tanh(Kv*err_dist_la); % alternative 2 - faster - needs additional tweaking
     ws(k) = -Kl*sign(cp(3))*err_dist_la + Ks*err_phi_la;
     
-     % limitation on the steering velocity - as it happens in a real car
-     %if abs(ws(k))>pi/8
-     %   ws(k) = sign(ws(k))*pi/8;
-     %end
+    % limitation on the steering velocity - as it happens in a real car
+    if abs(ws(k))>pi/8
+       ws(k) = sign(ws(k))*pi/8;
+    end
     
     
     % Simulates the car using the model of the theory classes
@@ -150,11 +146,10 @@ while(distanceToGoal > goalRadius && k < nsimul && turn_back_flag ==0)
     currPose = carPose(k+1,:);
     
     % steering angle limitation - as it happens in a real car
-    if currPose(4) > pi/4
-        currPose(4) = pi/4;
-    elseif currPose(4) < -pi/4
-        currPose(4) = -pi/4;
+    if abs(currPose(4)) > pi/4
+        currPose(4) = sign(currPose(4))*pi/4;
     end
+    
     
     k = k + 1;
     if mod(k,1000)==0
