@@ -12,6 +12,7 @@
 clear all
 hi = 0.01;   % this controls the time interval of the ref traj
 
+
 % dimensions of the car - mostly used for the plotting of the car rectangle
 % - if useful
 %
@@ -28,6 +29,7 @@ car_polygon = [ -a1, -car_width/2;
                 car_wheelbase + a1, -car_width/2;
                 car_wheelbase + a1, car_width/2;
                 -1, car_width/2 ];
+
 
 % reference trajectory specification
 figure(1)
@@ -81,8 +83,10 @@ tt(k+1) = tt(k);
 %%% now the control
 
 %%% input the initial position and orientation for the car
-disp('input the position and orientation of the car - 2 points')
-[car_x, car_y] = ginput(2);
+car_x = normrnd(x(1), 0.1);
+car_y = normrnd(y(1), 0.1);
+car_x(2) = xx(30);
+car_y(2) = yy(30);
 plot(car_x, car_y,'b');
 plot(car_x(1),car_y(1),'bo');
 drawnow
@@ -95,15 +99,15 @@ k=1;
 nsimul = 30000;             % max number of iterations of the simulation
 q(1,:) = [car_x(1), car_y(1), car_t, 0];    % initial configuration for the car
 q_ref = [xx', yy', tt'];    % reference trajectory 
-look_ahead_idx = 10;        % number of points ahead of the point in the reference traj
+look_ahead_idx = 5;        % number of points ahead of the point in the reference traj
                             % that is closest to the car used to "look ahead"
 turn_back_flag = 0;
-Kl = 5;
-Ks = 25;
-Kv = 2;
+Kl = 10;
+Ks = 50;
+Kv = 3;
 
 % main loop
-while norm(q(k,1:2)-q_ref(end,1:2))>2 && ...
+while norm(q(k,1:2)-q_ref(end,1:2))>0.2 && ...
         k<nsimul && ...
         turn_back_flag==0,
     
@@ -145,12 +149,11 @@ while norm(q(k,1:2)-q_ref(end,1:2))>2 && ...
     v(k) = 1 - tanh(Kv*l_look_ahead);      % alternative 2 - faster - needs additional tweaking
 
     ws(k) = -Kl*sign(cp(3))*l_look_ahead + Ks*error_t_look_ahead;
-
     
     % limitation on the steering velocity - as it happens in a real car
-     %if abs(ws(k))>pi/8
-     %   ws(k) = sign(ws(k))*pi/8;
-     %end
+     if abs(ws(k))>pi/8
+         ws(k) = sign(ws(k))*pi/8;
+     end
     
     % simulates the car using the model of the theory classes
     q(k+1,1) = q(k,1) + h*cos(q(k,3))*v(k);
