@@ -1,4 +1,4 @@
-function [TBFlag,t,carPose,u,e] = lowlevelController(h,NSim,goalRadius,lookAhead,path)
+function [TBFlag,t,carPose,u,e,E_remaining] = lowlevelController(h,NSim,goalRadius,lookAhead,path,time,car_polygon,E_budget,energy_field,axis,time_field)
 %INPUT
 %
 %
@@ -6,22 +6,8 @@ function [TBFlag,t,carPose,u,e] = lowlevelController(h,NSim,goalRadius,lookAhead
 %
 %
 %OUTPUT
-
-% Car specs
-car_length = 3.332; %m
-car_width = 1.508; %m
 L = 2.2; %m
-Lf = (car_length - L)/2; %m
-Lb = Lf; %m
 weight = 810; %Kg
-w_radius = 0.256; %m
-
-% Car polygon constructed counter-clock wise
-car_polygon = [ -Lb, -car_width/2;
-                L + Lf, -car_width/2;
-                L + Lf, car_width/2;
-                -Lb, car_width/2 ];
-car_polygon = polyshape(car_polygon(:,1),car_polygon(:,2));
 
 xx = path(:,1);  
 yy = path(:,2); 
@@ -30,14 +16,14 @@ car_x = normrnd(xx(1), 0.1);
 car_y = normrnd(yy(1), 0.1);
 car_x(2) = xx(30);
 car_y(2) = yy(30);
-h1=plot(car_y, car_x,'b');
+h1=plot(car_y, car_x,'b','Parent',axis);
 %h2=plot(car_y(1),car_x(1),'bo');
 drawnow
 car_t = atan2(car_y(2)-car_y(1), car_x(2)-car_x(1)); %initial orientation of the car
 
 %Initialization parameters
 k = 1; % sampling instant
-t(1) = 0;
+t = time;
 initialPose = [car_x(1), car_y(1), car_t, 0]; % initial configuration for the car
 carPose(1,:) = initialPose;
 distanceToGoal = norm(carPose(1,1:2)-path(end,1:2));
@@ -56,9 +42,12 @@ Kl = 5;
 Ks = 250;
 Kv = 0.03;
 
-while(distanceToGoal > goalRadius && k < NSim && TBFlag == 0)
+P0 = 5; %Change this value, random
+E_remaining = E_budget;
+
+while(distanceToGoal > goalRadius && k < NSim && TBFlag == 0 && E_remaining > 0)
     
-    t(k) = k*h;
+    t = time + k*h;
     
     % Get the point of the patherence trajectory that is closest to the car
     err = path(:,1:2) - carPose(k,1:2);
@@ -99,6 +88,29 @@ while(distanceToGoal > goalRadius && k < NSim && TBFlag == 0)
     v(k) = 1 - tanh(Kv*err_dist_la); % alternative 2 - faster - needs additional tweaking
     %v(k) = Kv*err_dist_la;
     ws(k) = -Kl*sign(cp(3))*err_dist_la + Ks*err_theta_la;
+ 
+   %Energy consumption 
+    if(k==1)
+        dv(k) = v(k)/h; %acceleration
+        dE(k) = (weight*dv(k)+P0)*v(k)*h; %energy spent on the movement
+        E(k) = dE(k); % Energy spent so far
+    else
+        if(abs(v(k)) > abs(maxVelocity(k-1)))
+            disp('You exceeded the maximum velocity!');
+            v(k) = sign(v(k))*abs(maxVelocity(k-1)); %saturate velocity
+            display(v(k))
+        end
+        dv(k) = (v(k)-v(k-1))/h; %acceleration
+        dE(k) = abs((weight*dv(k)+P0)*v(k)*h); %energy spent on the movement
+        E(k) = E(k-1)+dE(k); % Energy spent so far
+    end
+    %Remaining energy for the rest of the trajectory
+    dE_budget(k) = E_budget-E(k);
+    E_remaining = dE_budget(k);
+    %Remaining energy per step
+    E_step_rem(k) = dE_budget(k)/(NSim-k);
+    %Maximum velocity 
+    maxVelocity(k) = (P0/h)*E_step_rem(k);
     
     % limitation on the steering velocity - as it happens in a real car
     if abs(ws(k))>maxVelSteer
@@ -121,17 +133,20 @@ while(distanceToGoal > goalRadius && k < NSim && TBFlag == 0)
     
     % Re-compute distance to target
     distanceToGoal = norm(currPose(1:2)-path(end,1:2));
-    k = k + 1;
     
     if mod(k,1000)==0
         delete(h1);
-        disp(['k= ',num2str(k), ' look ahead idx ', num2str(min_idx), ' omega_s ', num2str(ws(k-1))]);
-        %h1=plot(carPose(k,2),carPose(k,1),'b+');
+        disp(['k= ',num2str(k), ' look ahead idx ', num2str(min_idx), ' omega_s ', num2str(ws(k))]);
+        h1=plot(carPose(k,2),carPose(k,1),'b+','Parent',axis);
         %car_polygon = rotate(car_polygon, rad2deg(carPose(k,3)));
         %car_polygon = translate((car_polygon), carPose(k,2),carPose(k,1));
-        h1 = plot(translate((car_polygon), carPose(k,2),carPose(k,1)));
+        %h1 = plot(translate((car_polygon), carPose(k,2),carPose(k,1)),'Parent',axis);
+        energy_field.Value=dE_budget(k);
+        time_field.Value = t;
         drawnow
     end
+    
+    k = k + 1;
     
 end
 

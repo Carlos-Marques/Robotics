@@ -61,9 +61,14 @@ x_array=[];
 y_array=[];
 for x = 1:size(G.Nodes, 1)
     name = cell2mat(G.Nodes(x, 1).Name);
-    splited = cellfun(@str2num, split(name, '_'));
+    sp = split(name, '_');
+    splited = str2num(char(sp));
     x_array = [x_array; splited(1)];
     y_array = [y_array; splited(2)];
+%   name = cell2mat(G.Nodes(x, 1).Name);
+%   splited = cellfun(@str2num, split(name, '_'));
+%   x_array = [x_array; splited(1)];
+%   y_array = [y_array; splited(2)];
 end
 
 end

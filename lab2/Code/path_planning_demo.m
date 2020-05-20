@@ -52,10 +52,14 @@ for i=1:length(x)
     plot(x_graph_min(i), y_graph_min(i),'o')
 end
 
+%Simulation parameters
 hi = 0.01;
 NSim = 30000;
 goalRadius = 2;
 lookAhead = 10;
+E_budget = 8000;
+
+
 for n=1:length(y_graph_min)-1
     node1 = strcat(num2str(y_graph_min(n)), '_',num2str(x_graph_min(n)));
     node2 = strcat(num2str(y_graph_min(n+1)), '_',num2str(x_graph_min(n+1)));
@@ -66,9 +70,14 @@ for n=1:length(y_graph_min)-1
     y_path=[];
     for i = 1:size(path, 2)
         name = cell2mat(path(i));
-        splited = cellfun(@str2num, split(name, '_'));
+        sp = split(name, '_');
+        splited = str2num(char(sp));
         x_path = [x_path; splited(1)];
         y_path = [y_path; splited(2)];
+        %name = cell2mat(path(i));
+        %splited = cellfun(@str2num, split(name, '_'));
+        %x_path = [x_path; splited(1)];
+        %y_path = [y_path; splited(2)];
     end
 
     path_coords = [x_path y_path];
@@ -77,5 +86,16 @@ for n=1:length(y_graph_min)-1
 
     plot(trajectory(:,2),trajectory(:,1));
     
-    [TBFlag,t,carPose,u,e] = lowlevelController(hi,NSim,goalRadius,lookAhead,trajectory);
+    [TBFlag,t,carPose,u,e,E_remaining] = lowlevelController(hi,NSim,goalRadius,lookAhead,trajectory,E_budget);
+    
+    %Update energy budget
+    E_budget = E_remaining;
+    
+    if E_remaining <= 0
+        disp('You ran out of energy!');
+        break;
+    end
+    
 end
+
+p = plot(G,'XData',x_graph,'YData',y_graph,'EdgeLabel',G.Edges.Weight)

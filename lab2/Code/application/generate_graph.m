@@ -12,13 +12,13 @@ function [G, x_array, y_array,T] = generate_graph(map)
 
 T = imresize(map, [512, 512]);
 
-S = qtdecomp(T, 0, [1 16]);
+S = qtdecomp(T, 0, [1 32]);
 
 [i, j, v] = find(S);
 
 B = [];
 for x = 1:size(i)
-    if T(i(x), j(x)) == 255 && v(x) > 4
+    if T(i(x), j(x)) == 255 && v(x) > 1
         center = ceil(v(x)/2)-1;
         A = [i(x) j(x) v(x) center i(x)+center j(x)+center];
         B = [B; A];
@@ -61,9 +61,14 @@ x_array=[];
 y_array=[];
 for x = 1:size(G.Nodes, 1)
     name = cell2mat(G.Nodes(x, 1).Name);
-    splited = cellfun(@str2num, split(name, '_'));
+    sp = split(name, '_');
+    splited = str2num(char(sp));
     x_array = [x_array; splited(1)];
     y_array = [y_array; splited(2)];
+%   name = cell2mat(G.Nodes(x, 1).Name);
+%   splited = cellfun(@str2num, split(name, '_'));
+%   x_array = [x_array; splited(1)];
+%   y_array = [y_array; splited(2)];
 end
 
 end

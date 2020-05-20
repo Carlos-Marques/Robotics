@@ -1,4 +1,4 @@
-function [TBFlag,t,carPose,u,e] = lowlevelController(h,NSim,goalRadius,lookAhead,path)
+function [TBFlag,t,carPose,u,e,E_remaining] = lowlevelController(h,NSim,goalRadius,lookAhead,path,E_budget)
 %INPUT
 %
 %
@@ -21,7 +21,7 @@ car_polygon = [ -Lb, -car_width/2;
                 L + Lf, -car_width/2;
                 L + Lf, car_width/2;
                 -Lb, car_width/2 ];
-car_polygon = polyshape(car_polygon(:,1),car_polygon(:,2));
+%car_polygon = polyshape(car_polygon(:,1),car_polygon(:,2));
 
 xx = path(:,1);  
 yy = path(:,2); 
@@ -56,7 +56,11 @@ Kl = 5;
 Ks = 250;
 Kv = 0.03;
 
-while(distanceToGoal > goalRadius && k < NSim && TBFlag == 0)
+%Energy parameters
+P0 = 5; %Change this value, random
+E_remaining = E_budget;
+
+while(distanceToGoal > goalRadius && k < NSim && TBFlag == 0 && E_remaining > 0) %added Energy constraint
     
     t(k) = k*h;
     
@@ -100,6 +104,29 @@ while(distanceToGoal > goalRadius && k < NSim && TBFlag == 0)
     %v(k) = Kv*err_dist_la;
     ws(k) = -Kl*sign(cp(3))*err_dist_la + Ks*err_theta_la;
     
+    %Energy consumption 
+    if(k==1)
+        dv(k) = v(k)/h; %acceleration
+        dE(k) = (weight*dv(k)+P0)*v(k)*h; %energy spent on the movement
+        E(k) = dE(k); % Energy spent so far
+    else
+        if(abs(v(k)) > abs(maxVelocity(k-1)))
+            disp('You exceeded the maximum velocity!');
+            v(k) = sign(v(k))*abs(maxVelocity(k-1)); %saturate velocity
+        end
+        dv(k) = (v(k)-v(k-1))/h; %acceleration
+        dE(k) = abs((weight*dv(k)+P0)*v(k)*h); %energy spent on the movement
+        E(k) = E(k-1)+dE(k); % Energy spent so far
+    end
+    %Remaining energy for the rest of the trajectory
+    dE_budget(k) = E_budget-E(k);
+    E_remaining = dE_budget(k);
+    %Remaining energy per step
+    E_step_rem(k) = dE_budget(k)/(NSim-k);
+    %Maximum velocity 
+    maxVelocity(k) = (P0/h)*E_step_rem(k);
+    
+    
     % limitation on the steering velocity - as it happens in a real car
     if abs(ws(k))>maxVelSteer
        ws(k) = sign(ws(k))*maxVelSteer;
@@ -121,17 +148,19 @@ while(distanceToGoal > goalRadius && k < NSim && TBFlag == 0)
     
     % Re-compute distance to target
     distanceToGoal = norm(currPose(1:2)-path(end,1:2));
-    k = k + 1;
     
     if mod(k,1000)==0
         delete(h1);
-        disp(['k= ',num2str(k), ' look ahead idx ', num2str(min_idx), ' omega_s ', num2str(ws(k-1))]);
-        %h1=plot(carPose(k,2),carPose(k,1),'b+');
+        %disp(['k= ',num2str(k), ' look ahead idx ', num2str(min_idx), ' omega_s ', num2str(ws(k))]);
+        disp(['Energy remaining: ', num2str(dE_budget(k)), ' Maximum velocity: ', num2str(maxVelocity(k)),' Current velocity: ', num2str(v(k))]);
+        h1=plot(carPose(k,2),carPose(k,1),'b+');
         %car_polygon = rotate(car_polygon, rad2deg(carPose(k,3)));
         %car_polygon = translate((car_polygon), carPose(k,2),carPose(k,1));
-        h1 = plot(translate((car_polygon), carPose(k,2),carPose(k,1)));
+        %h1 = plot(translate((car_polygon), carPose(k,2),carPose(k,1)));
         drawnow
     end
+    
+    k = k + 1;
     
 end
 
