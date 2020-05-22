@@ -1,12 +1,14 @@
-function [u,e]=simulation(map_original,map_size,objs,e1,e2,e3,e4,axis,...
-          time_field,energy_field,velocity_field,distance_field)
+function [G,x_graph,y_graph,u,carPose, e]=simulation(map_original,map_size,objs,e1,e2, e2_limit,e3,e4,axis,time_field,energy_field,velocity_field,distance_field, G,x_graph,y_graph)
 
     % Dilate objects in the map. This way the genenrated path never touches
     % the objects.
     map = generate_bw_map(map_size,objs);
     se = strel('rectangle',[5 5]);
     map_eroded = imerode(map, se);
-    [G,x_graph,y_graph,~] = generate_graph(map_eroded);
+    imshow(map_eroded);
+    if isempty(G)
+        [G,x_graph,y_graph,~] = generate_graph(map_eroded);
+    end
 
     % show chosen objects overlayed on map
     T = map_original;
@@ -50,6 +52,18 @@ function [u,e]=simulation(map_original,map_size,objs,e1,e2,e3,e4,axis,...
     end
     drawnow;
     
+%     waitfor(msgbox('Choose the car initial location and orientation.'));
+%     
+%     [x_car, y_car, ~] = ginput(2);
+%     plot(x_car(1), y_car(1),'o');
+%     plot(x_car(1), y_car(1),'o','Parent',axis);
+%     orientation = atan2(y_car(2)-y_car(1),x_car(2)-x_car(1));
+%     plot([x_car(2) x_car(1)], [y_car(2) y_car(1)]);
+%     plot([x_car(2) x_car(1)], [y_car(2) y_car(1)],'Parent',axis);
+%     drawnow;
+%     
+%     initialPose = [x_car(1), y_car(1), orientation, 0];
+    
     % Close the image after choosing the path
     figHandles = findobj('type', 'figure', '-not', 'figure', 'figure1');
     close(figHandles);    
@@ -79,14 +93,35 @@ function [u,e]=simulation(map_original,map_size,objs,e1,e2,e3,e4,axis,...
                     L + Lf, -car_width/2;
                     L + Lf, car_width/2;
                     -Lb, car_width/2 ];
-    %car_polygon = polyshape(car_polygon(:,1),car_polygon(:,2));
+    car_polygon = polyshape(car_polygon(:,1),car_polygon(:,2));
+    
+    %Make conversion of the car polygon
+    %Base on the reference axis drawn on the map   
+    %yaxis
+    pt1 = [200 57];
+    pt2 = [232 207];
+    distance_im_y = norm(pt2-pt1);
+    distance_meters_y = 40; %meters
+    scale_factor_y = distance_im_y/distance_meters_y;
+    
+    %xaxis
+    pt3 = [228 205];
+    pt4 = [321 201];
+    distance_im_x = norm(pt4-pt3);
+    distance_meters_x = 10; %meters
+    scale_factor_x = distance_im_x/distance_meters_x;
+
+    car_polygon = scale(car_polygon, [1 1]);
     
     % Main loop for simulation
     hi = 0.01;
-    NSim = 30000;
-    goalRadius = 1.5;
-    lookAhead = 10;
-    E_budget = 20000;
+    NSim = 3000000;
+    goalRadius = 3.5;
+    lookAhead = 5;
+    E_budget = 1000000;
+    speed_limit = 1;
+    slow_down = 0;
+    sd_time = 0;
     distance = 0;
     
     timer = 0;
@@ -94,6 +129,15 @@ function [u,e]=simulation(map_original,map_size,objs,e1,e2,e3,e4,axis,...
     e2_done = 0;
     e3_done = 0;
     e4_done = 0;
+    
+    prompt = {'Enter starting energy budget:', 'Enter P0:'};
+                dlgtitle = 'Input';
+                dims = [1 35];
+                definput = {'2000000', '5'};
+                answer = inputdlg(prompt,dlgtitle,dims,definput);
+                
+    E_budget = str2double(answer{1});
+    P0 = str2double(answer{2});
     
     for n=1:length(y_graph_min)-1
         
@@ -112,15 +156,10 @@ function [u,e]=simulation(map_original,map_size,objs,e1,e2,e3,e4,axis,...
         x_path=[];
         y_path=[];
         for i = 1:size(path, 2)
-           name = cell2mat(path(i));
-            sp = split(name, '_');
-            splited = str2num(char(sp));
+            name = cell2mat(path(i));
+            splited = cellfun(@str2num, split(name, '_'));
             x_path = [x_path; splited(1)];
             y_path = [y_path; splited(2)];
-            %name = cell2mat(path(i));
-            %splited = cellfun(@str2num, split(name, '_'));
-            %x_path = [x_path; splited(1)];
-            %y_path = [y_path; splited(2)];
         end
         
         path_coords = [x_path y_path];
@@ -128,28 +167,28 @@ function [u,e]=simulation(map_original,map_size,objs,e1,e2,e3,e4,axis,...
         for i=1:length(path_coords)
             % check if close to stop sign event
             for j=1:length(e1)
-                if norm(path_coords(i,:))^2-sum(e1{j}.x^2+e1{j}.y^2)<3 && flag_e1==0 && e1_done~=j
+                if sqrt((path_coords(i,2)-e1{j}.x)^2+(path_coords(i,1)-e1{j}.y)^2)<10 && flag_e1==0 && e1_done~=j
                     flag_e1 = i;
                     e1_done = j; 
                 end
             end
             % check if close to speed limit event
             for j=1:length(e2)
-                if norm(path_coords(i,:))^2-sum(e2{j}.x^2+e2{j}.y^2)<3 && flag_e2==0 && e2_done~=j
+                if sqrt((path_coords(i,2)-e2{j}.x)^2+(path_coords(i,1)-e2{j}.y)^2)<10 && flag_e2==0 && e2_done~=j
                     flag_e2 = i;
                     e2_done = j;
                 end
             end
             % check if close to pedestrian crossing sign event
             for j=1:length(e3)
-                if norm(path_coords(i,:))^2-sum(e3{j}.x^2+e3{j}.y^2)<3 && flag_e3==0 && e3_done~=j
+                if sqrt((path_coords(i,2)-e3{j}.x)^2+(path_coords(i,1)-e3{j}.y)^2)<10 && flag_e3==0 && e3_done~=j
                     flag_e3 = i;
                     e3_done = j;
                 end
             end
             % check if close and time for pedestrian crossing
             for j=1:length(e4)
-                if norm(path_coords(i,:))^2-sum(e4{j}.x^2+e4{j}.y^2)<3 && abs(timer-e4{j}.start_time)<200 && flag_e4==0 && e4_done~=j 
+                if sqrt((path_coords(i,2)-e4{j}.x)^2+(path_coords(i,1)-e4{j}.y)^2)<10 && abs(timer-e4{j}.start_time)<200 && flag_e4==0 && e4_done~=j 
                     flag_e4 = i;
                     e4_done = j;
                 end
@@ -168,9 +207,21 @@ function [u,e]=simulation(map_original,map_size,objs,e1,e2,e3,e4,axis,...
         if min(nonzeros(flags))~=1
             sub_path = path_coords(1:min(nonzeros(flags)),:);
             [~,trajectory] = genTrajectory(sub_path,hi);
+            if n==1
+                xx = trajectory(:,1);
+                yy = trajectory(:,2);
+                tt = atan2(yy(20)-yy(1), xx(20)-xx(1));
+                %disp(tt);
+                initialPose = [xx(1),yy(1),tt,0];
+                [car_cx, car_cy]= centroid(car_polygon);
+                car_polygon = rotate(car_polygon, -rad2deg(tt)+90, [car_cx, car_cy+1]);
+                h1=plot(xx(1), yy(1),'b','Parent',axis);
+            else
+                h1=plot(initialPose(1), initialPose(2),'b','Parent',axis);
+            end
             plot(trajectory(:,2),trajectory(:,1),'Parent',axis);
-            [TBFlag,t,carPose,u,e,E_remaining,d] = lowlevelController(hi,NSim,goalRadius,lookAhead,trajectory,timer,car_polygon,E_budget, ...
-                             energy_field,axis,time_field,velocity_field);
+            [TBFlag,t,carPose,u,e,E_remaining, car_polygon,d] = lowlevelController(hi,NSim,goalRadius,lookAhead,trajectory,timer,car_polygon,E_budget,energy_field,axis,time_field,initialPose,h1, speed_limit, slow_down, sd_time, P0,velocity_field);
+            initialPose = carPose(end,:);
             timer = timer+t;
             distance = distance + d;
             distance_field.Value = distance;
@@ -183,6 +234,7 @@ function [u,e]=simulation(map_original,map_size,objs,e1,e2,e3,e4,axis,...
             % stop sign event
             if flags_idx(i)==1
                 for tt = 1:20
+                    velocity_field.Value = 0;
                     time_field.Value = timer+tt;
                     pause(0.1);
                 end
@@ -191,8 +243,8 @@ function [u,e]=simulation(map_original,map_size,objs,e1,e2,e3,e4,axis,...
                     sub_path = path_coords(flags(i):flags(i+1),:);
                     [~,trajectory] = genTrajectory(sub_path,hi);
                     plot(trajectory(:,2),trajectory(:,1),'Parent',axis);
-                    [TBFlag,t,carPose,u,e,E_remaining,d] = lowlevelController(hi,NSim,goalRadius,lookAhead,trajectory,timer,car_polygon,E_budget, ...
-                                                          energy_field,axis,time_field,velocity_field);
+                    [TBFlag,t,carPose,u,e,E_remaining, car_polygon,d] = lowlevelController(hi,NSim,goalRadius,lookAhead,trajectory,timer,car_polygon,E_budget,energy_field,axis,time_field,initialPose,h1, speed_limit, slow_down, sd_time, P0,velocity_field);
+                    initialPose = carPose(end,:);
                     timer = timer+t;
                     distance = distance + d;
                     distance_field.Value = distance;
@@ -204,8 +256,9 @@ function [u,e]=simulation(map_original,map_size,objs,e1,e2,e3,e4,axis,...
                     sub_path = path_coords(flags(i):flags(i+1),:);
                     [~,trajectory] = genTrajectory(sub_path,hi);
                     plot(trajectory(:,2),trajectory(:,1),'Parent',axis);
-                    [TBFlag,t,carPose,u,e,E_remaining,d] = lowlevelController(hi,NSim,goalRadius,lookAhead,trajectory,timer,car_polygon,E_budget, ... 
-                                     energy_field,axis,time_field,velocity_field);
+                    speed_limit = e2_limit;
+                    [TBFlag,t,carPose,u,e,E_remaining, car_polygon,d] = lowlevelController(hi,NSim,goalRadius,lookAhead,trajectory,timer,car_polygon,E_budget,energy_field,axis,time_field,initialPose,h1, speed_limit, slow_down, sd_time, P0,velocity_field);
+                    initialPose = carPose(end,:);
                     timer = timer+t;
                     distance = distance + d;
                     distance_field.Value = distance;
@@ -217,15 +270,20 @@ function [u,e]=simulation(map_original,map_size,objs,e1,e2,e3,e4,axis,...
                     sub_path = path_coords(flags(i):flags(i+1),:);
                     [~,trajectory] = genTrajectory(sub_path,hi);
                     plot(trajectory(:,2),trajectory(:,1),'Parent',axis);
-                    [TBFlag,t,carPose,u,e,E_remaining,d] = lowlevelController(hi,NSim,goalRadius,lookAhead,trajectory,timer,car_polygon,E_budget, ...
-                                          energy_field,axis,time_field,velocity_field);
+                    slow_down = 0.4;
+                    sd_time = 50;
+                    [TBFlag,t,carPose,u,e,E_remaining, car_polygon,d] = lowlevelController(hi,NSim,goalRadius,lookAhead,trajectory,timer,car_polygon,E_budget,energy_field,axis,time_field,initialPose,h1, speed_limit, slow_down, sd_time, P0,velocity_field);
+                    initialPose = carPose(end,:);
+                    slow_down = 0;
+                    sd_time = 0;
                     timer = timer+t;
                     distance = distance + d;
                     distance_field.Value = distance;
                 end
             end
             if flags_idx(i)==4
-                for tt = 1:e4{j}.duration*10
+                for tt = 1:e4{j}.duration
+                    velocity_field.Value = 0;
                     time_field.Value = timer+tt;
                     pause(0.1);
                 end
@@ -234,8 +292,8 @@ function [u,e]=simulation(map_original,map_size,objs,e1,e2,e3,e4,axis,...
                     sub_path = path_coords(flags(i):flags(i+1),:);
                     [~,trajectory] = genTrajectory(sub_path,hi);
                     plot(trajectory(:,2),trajectory(:,1),'Parent',axis);
-                    [TBFlag,t,carPose,u,e,E_remaining,d] = lowlevelController(hi,NSim,goalRadius,lookAhead,trajectory,timer,car_polygon,E_budget, ...
-                                         energy_field,axis,time_field,velocity_field);
+                    [TBFlag,t,carPose,u,e,E_remaining, car_polygon,d] = lowlevelController(hi,NSim,goalRadius,lookAhead,trajectory,timer,car_polygon,E_budget,energy_field,axis,time_field,initialPose,h1, speed_limit, slow_down, sd_time, P0,velocity_field);
+                    initialPose = carPose(end,:);
                     timer = timer+t;
                     distance = distance + d;
                     distance_field.Value = distance;
@@ -250,6 +308,8 @@ function [u,e]=simulation(map_original,map_size,objs,e1,e2,e3,e4,axis,...
             break;
         end
         
+        % new initial pose is the last pose of the current position
+        
         % generate the trajectory for the path (aka sample the path)
         %[~,trajectory] = genTrajectory(path_coords,hi);
        
@@ -260,5 +320,10 @@ function [u,e]=simulation(map_original,map_size,objs,e1,e2,e3,e4,axis,...
         %[TBFlag,t,carPose,u,e] = lowlevelController(hi,NSim,goalRadius,lookAhead,trajectory,timer,car_polygon,axis,time_field);
         %timer = timer+t;
     end
+    
+    h1 = plot(translate((car_polygon), carPose(end,2),carPose(end,1)),'Parent',axis);
+    y_g = x_graph;
+    x_g = y_graph;
+    save('map_obstacles.mat','objs','G','x_g','y_g'); 
     
 end

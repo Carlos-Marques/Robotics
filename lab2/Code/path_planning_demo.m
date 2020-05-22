@@ -98,4 +98,4 @@ for n=1:length(y_graph_min)-1
     
 end
 
-p = plot(G,'XData',x_graph,'YData',y_graph,'EdgeLabel',G.Edges.Weight)
+p = plot(G,'XData',x_graph,'YData',y_graph,'EdgeLabel',G.Edges.Weight);

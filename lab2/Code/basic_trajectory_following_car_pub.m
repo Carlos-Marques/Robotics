@@ -69,7 +69,7 @@ plot(xx,yy, 'r')
 %         theta_car = atan2(yy(k)-yy(k-1), xx(k)-xx(k-1));
 %     end
 %     for p=1:4,
-%         rot_car_polygon(p,:) = ([cos(theta_car), -sin(theta_car); sin(theta_car), cos(theta_car)]*car_polygon(p,:)')';
+         rot_car_polygon(p,:) = ([cos(theta_car), -sin(theta_car); sin(theta_car), cos(theta_car)]*car_polygon(p,:)')';
 %     end
 %     plot(rot_car_polygon(:,1)/x_scale+xx(k), rot_car_polygon(:,2)/y_scale+yy(k))
 % end

@@ -1,5 +1,4 @@
-function [TBFlag,t,carPose,u,e,E_remaining,distanceCovered] = lowlevelController(h,NSim,goalRadius,lookAhead,path,time,car_polygon,E_budget, ...
-          energy_field,axis,time_field,velocity_field)
+function [TBFlag,t,carPose,u,e,E_remaining, car_polygon,distanceCovered] = lowlevelController(h,NSim,goalRadius,lookAhead,path,time,car_polygon,E_budget,energy_field,axis,time_field,initialPose,h1, speed_limit, slow_down, sd_time, P0, velocity_field)
 %INPUT
 %
 %
@@ -10,22 +9,9 @@ function [TBFlag,t,carPose,u,e,E_remaining,distanceCovered] = lowlevelController
 L = 2.2; %m
 weight = 810; %Kg
 
-xx = path(:,1);  
-yy = path(:,2); 
-%Initial position and orientation of the car
-car_x = normrnd(xx(1), 0.1);
-car_y = normrnd(yy(1), 0.1);
-car_x(2) = xx(30);
-car_y(2) = yy(30);
-h1=plot(car_y, car_x,'b','Parent',axis);
-%h2=plot(car_y(1),car_x(1),'bo');
-drawnow
-car_t = atan2(car_y(2)-car_y(1), car_x(2)-car_x(1)); %initial orientation of the car
-
 %Initialization parameters
 k = 1; % sampling instant
 t = time;
-initialPose = [car_x(1), car_y(1), car_t, 0]; % initial configuration for the car
 carPose(1,:) = initialPose;
 distanceToGoal = norm(carPose(1,1:2)-path(end,1:2));
 TBFlag = 0;
@@ -40,11 +26,9 @@ maxVelSteer = pi/8; %Maximum steering velocity
 %Kl = 10;
 %Ks = 50;
 %Kv = 3;
-Kl = 5;
+Kl = 10;
 Ks = 250;
 Kv = 0.03;
-
-P0 = 5; %Change this value, random
 E_remaining = E_budget;
 
 while(distanceToGoal > goalRadius && k < NSim && TBFlag == 0 && E_remaining > 0)
@@ -79,7 +63,7 @@ while(distanceToGoal > goalRadius && k < NSim && TBFlag == 0 && E_remaining > 0)
     end
     % checks that the car is not trying to go back - if that's the case stop
     % the simulation as something is likely to be going wrong
-    TBFlag = (abs(err_theta_la)>pi/2);
+    %TBFlag = (abs(err_theta_la)>pi/2);
     % checks which side, relative to the path trajectory, the car is
     cp = cross([err(min_idx,1:2),0],[cos(lookAheadPose(3)),sin(lookAheadPose(3)),0]);
     % if cp(3)>0 the car is on the left side
@@ -88,6 +72,13 @@ while(distanceToGoal > goalRadius && k < NSim && TBFlag == 0 && E_remaining > 0)
     % Compute controller outputs, then feed them to the robot
     %v(k) = 0.1; % alternative 1 - a bit slow 
     v(k) = 1 - tanh(Kv*err_dist_la); % alternative 2 - faster - needs additional tweaking
+    if time+sd_time > t
+        v(k) = slow_down;
+    end
+    
+    if v(k) > speed_limit
+        v(k) = speed_limit;
+    end
     %v(k) = Kv*err_dist_la;
     ws(k) = -Kl*sign(cp(3))*err_dist_la + Ks*err_theta_la;
  
@@ -136,28 +127,32 @@ while(distanceToGoal > goalRadius && k < NSim && TBFlag == 0 && E_remaining > 0)
         carPose(k+1,4) = sign(currPose(4))*maxPhi;
     end
     
+    %disp([carPose(k, 3) carPose(k+1, 3)])
+    [car_cx, car_cy]= centroid(car_polygon);
+    car_polygon = rotate(car_polygon, rad2deg(carPose(k, 3) - carPose(k+1,3)), [car_cx, car_cy+1]);
     % Re-compute distance to target
     distanceToGoal = norm(currPose(1:2)-path(end,1:2));
-    
-    if mod(k,1000)==0
+    if mod(k,100)==0
         delete(h1);
-        disp(['k= ',num2str(k), ' look ahead idx ', num2str(min_idx), ' omega_s ', num2str(ws(k))])
-        %h1=plot(carPose(k,2),carPose(k,1),'b+','Parent',axis);
-        CarPoly = drawCar(carPose);
-        h1=plot(CarPoly(:,2)+carPose(k,2),CarPoly(:,1)+carPose(k,1),'Parent',axis,'LineWidth',1.5);
+        %disp(['k= ',num2str(k), ' look ahead idx ', num2str(min_idx), ' omega_s ', num2str(ws(k-1))]);
+        %h1=plot(carPose(k,2),carPose(k,1),'b+');
         %car_polygon = rotate(car_polygon, rad2deg(carPose(k,3)));
-        %car_polygon = translate((car_polygon), carPose(k,2),carPose(k,1));
-        %h1 = plot(translate((car_polygon), carPose(k,2),carPose(k,1)),'Parent',axis);
+%         %car_polygon = translate((car_polygon), carPose(k,2),carPose(k,1));
+%         [car_cx, car_cy]= centroid(car_polygon);
+%         car_polygon = rotate(car_polygon, rad2deg(carPose(k,3)), [car_cx, car_cy]);
+        h1 = plot(translate((car_polygon), carPose(k,2),carPose(k,1)),'Parent',axis);        
         energy_field.Value=dE_budget(k);
         time_field.Value = t;
-        velocity_field.Value = v(k); 
+        velocity_field.Value = v(k)*50; 
         drawnow
     end
     
     k = k + 1;
     
 end
+%disp(TBFlag);
 
+delete(h1);
 %Controller outputs
 u = [v;ws];
 
