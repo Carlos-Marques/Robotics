@@ -9,9 +9,9 @@ clear
 alpha = deg2rad(0);
 beta = deg2rad(-90);
 gama = deg2rad(180);
-x = 0.2607;
+x = 0.3;
 y = 0;
-z = 0.2129;
+z = 0.7;
 
 rot_base_end = eul2rotm([alpha beta gama], 'ZYZ');
 

@@ -1,13 +1,8 @@
 %% Forward kinematics
-clear
+% Inputs: A1, A2, A3, A4, A5, A6 - joint angles
+% Returns: x,y,z,alpha,beta,gama of end effector (ZYZ convention)
 
-% Joint values
-A1 = deg2rad(180);
-A2 = deg2rad(83.492647400341210);
-A3 = deg2rad(-2.404264307927837e+02);
-A4 = deg2rad(0);
-A5 = deg2rad(0);
-A6 = deg2rad(0);
+function end_effector_pose = forward_kinematics(A1, A2, A3, A4, A5, A6)
 
 % Mechanical specifications
 d0 = 0.103;
@@ -16,7 +11,7 @@ d2 = 0.210;
 d3 = 0.030;
 d4 = 0.0415;
 d5 = 0.180;
-d6 = 0;
+d6 = 0;%0.0055;
 d7 = 0.0237;
 
 % DH parameters
@@ -34,8 +29,8 @@ for i=1:length(theta)
                0             0                            0                           1];
 end
 
-final = T(:, :, 1)*T(:, :, 2)*T(:, :, 3)*T(:, :, 4)*T(:, :, 5)*T(:, :, 6)*T(:, :, 7)
+final = T(:, :, 1)*T(:, :, 2)*T(:, :, 3)*T(:, :, 4)*T(:, :, 5)*T(:, :, 6)*T(:, :, 7);
 
+end_effector_pose = [final(1:3, end)' rotm2eul(final(1:3,1:3), 'ZYZ')];
 
-p = final(1:3, 4);
-p_5 = p + final(1:3,3)*d7
+end

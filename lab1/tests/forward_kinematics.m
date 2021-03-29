@@ -3,8 +3,8 @@ clear
 
 % Joint values
 A1 = deg2rad(0);
-A2 = deg2rad(-1.076108176461688e+02);
-A3 = deg2rad(-1.654264307927835e+02);
+A2 = deg2rad(0);
+A3 = deg2rad(0);
 A4 = deg2rad(0);
 A5 = deg2rad(0);
 A6 = deg2rad(0);
